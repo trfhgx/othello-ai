@@ -11,13 +11,14 @@ use std::io::BufReader;
 use board::Cell;
 use game::{Game, GameState, Player};
 use ai::minimax;
+
 fn play_sound(file: &str) {
     let path = format!("src/soundtrack/{}", file);
     std::thread::spawn(move || {
         if let Ok((_stream, handle)) = OutputStream::try_default() {
-            if let Ok(sink) = Sink::try_new(&handle) {
-                if let Ok(file) = File::open(&path) {
-                    if let Ok(source) = Decoder::new(BufReader::new(file)) {
+            if let Ok(file) = File::open(&path) {
+                if let Ok(source) = Decoder::new(BufReader::new(file)) {
+                    if let Ok(sink) = Sink::try_new(&handle) {
                         sink.append(source);
                         sink.sleep_until_end();
                     }
@@ -44,14 +45,18 @@ struct ReversiApp {
     ai_mode: bool,
     ai_player: Option<Player>,
     sound_played: bool,
+    _audio_stream: Option<(OutputStream, rodio::OutputStreamHandle)>,
 }
 
 impl Default for ReversiApp {
     fn default() -> Self {
-        Self { game: Game::new(),
+        Self { 
+            game: Game::new(),
             ai_mode: false,
             ai_player: None,
-            sound_played: false,}
+            sound_played: false,
+            _audio_stream: OutputStream::try_default().ok(),
+        }
     }
 }
 
@@ -136,6 +141,8 @@ impl eframe::App for ReversiApp {
 
                             if row >= 0 && row < 8 && col >= 0 && col < 8 {
                                 if self.game.make_move(row, col) {
+                                    ctx.request_repaint();
+
                                     play_sound("click_cell.mp3");
                                 }
                             }
@@ -146,21 +153,37 @@ impl eframe::App for ReversiApp {
                 
                 // Play sound once when game ends
                 if self.game.state != GameState::Playing && !self.sound_played {
-                    match self.game.state {
-                        GameState::BlackWin | GameState::WhiteWin => play_sound("win.mp3"),
-                        GameState::Draw => play_sound("game_over.mp3"),
-                        _ => {}
+                    let color_winner = match self.game.state {
+                        GameState::BlackWin => Cell::Black,
+                        GameState::WhiteWin => Cell::White,
+                        GameState::Draw => Cell::Empty,
+                        _ => Cell::Empty,
+                    };
+                    // if ai wins we play game_over otherwise win sound
+                     // if cell empty aka draw we  play draw.mp3
+
+                    if color_winner == Cell::Empty {
+                        play_sound("draw.mp3");
+                    } else if let Some(ai_player) = self.ai_player {
+                        if ai_player.to_cell() == color_winner {
+                            play_sound("game_over.mp3");
+                        } else {
+                            play_sound("win.mp3");
+                        }
+                    } else {
+                        play_sound("win.mp3");
                     }
+                    
+                   
                     self.sound_played = true;
                 }
                 
                 if self.ai_mode && self.game.state == GameState::Playing {
                     if let Some(ai_player) = self.ai_player {
                         if self.game.current_player == ai_player {
-                            let ( _score, best_move) = minimax(&self.game, ai_player.to_cell(), 0, 4);
+                            let ( _score, best_move) = minimax(&self.game, ai_player.to_cell(), 0, 5, isize::MIN, isize::MAX);
                             if let Some(cords) = best_move {
                                 self.game.make_move(cords.0, cords.1);
-                                play_sound("click_cell.mp3");
                             }
 
                             ctx.request_repaint();

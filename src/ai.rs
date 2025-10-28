@@ -26,14 +26,18 @@ pub fn eval(_game: &Game) -> isize {
 
 
 }
-pub fn minimax(_game: &Game, color: Cell, depth:usize,max_depth: usize) -> (isize, Option<Cords>) {
+pub fn minimax(_game: &Game, color: Cell, depth: usize, max_depth: usize, mut alpha: isize, mut beta: isize) -> (isize, Option<Cords>) {
     if depth > max_depth {
         return (eval(_game), None);
     }
 
-
     let moves = _game.board.all_valid_moves(color);
-    let mut best_score = if color == Cell::Black { -f32::INFINITY } else { f32::INFINITY };
+
+    if moves.is_empty() {
+        return (eval(_game), None);
+    }
+
+    let mut best_score = if color == Cell::Black { isize::MIN } else { isize::MAX };
     let mut best_move = None;
 
     for index in moves {
@@ -45,13 +49,29 @@ pub fn minimax(_game: &Game, color: Cell, depth:usize,max_depth: usize) -> (isiz
             Cell::White => Cell::Black,
             _ => color,
         };
-        let (score, _) = minimax(&new_game, opposite_color, depth+1, max_depth);
 
-        if (color == Cell::Black && (score as f32) > best_score) || (color == Cell::White && (score as f32) < best_score) {
-            best_score = score as f32;
-            best_move = Some(index);
+        let (score, _) = minimax(&new_game, opposite_color, depth + 1, max_depth, alpha, beta);
+
+        if color == Cell::Black {
+            if score > best_score {
+                best_score = score;
+                best_move = Some(index);
+            }
+            alpha = alpha.max(best_score);
+            if beta <= alpha {
+                break; // Beta cutoff
+            }
+        } else {
+            if score < best_score {
+                best_score = score;
+                best_move = Some(index);
+            }
+            beta = beta.min(best_score);
+            if beta <= alpha {
+                break; // Alpha cutoff
+            }
         }
     }
 
-    (best_score as isize, best_move)
+    (best_score, best_move)
 }
