@@ -3,9 +3,29 @@ use egui::{Color32, Pos2, Rect, Stroke, Vec2, epaint::StrokeKind};
 
 mod board;
 mod game;
+mod ai;
 
+use rodio::{Decoder, OutputStream, Sink};
+use std::fs::File;
+use std::io::BufReader;
 use board::Cell;
 use game::{Game, GameState, Player};
+
+fn play_sound(file: &str) {
+    let path = format!("src/soundtrack/{}", file);
+    std::thread::spawn(move || {
+        if let Ok((_stream, handle)) = OutputStream::try_default() {
+            if let Ok(sink) = Sink::try_new(&handle) {
+                if let Ok(file) = File::open(&path) {
+                    if let Ok(source) = Decoder::new(BufReader::new(file)) {
+                        sink.append(source);
+                        sink.sleep_until_end();
+                    }
+                }
+            }
+        }
+    });
+}
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
@@ -23,13 +43,15 @@ struct ReversiApp {
     game: Game,
     ai_mode: bool,
     ai_player: Option<Player>,
+    sound_played: bool,
 }
 
 impl Default for ReversiApp {
     fn default() -> Self {
         Self { game: Game::new(),
             ai_mode: false,
-            ai_player: None,}
+            ai_player: None,
+            sound_played: false,}
     }
 }
 
@@ -84,9 +106,9 @@ impl eframe::App for ReversiApp {
                                 if self.game.state == GameState::Playing && self.game.board.valid_move(i as isize, j as isize, self.game.current_player.to_cell()) {
                                     let color: Color32;
                                     if self.game.current_player.to_cell() == Cell::White {
-                                         color = Color32::from_rgba_premultiplied(255, 255, 255, 60);
+                                        color = Color32::from_rgba_premultiplied(255, 255, 255, 60);
                                     } else {
-                                         color = Color32::from_rgba_premultiplied(0, 0, 0, 60);
+                                        color = Color32::from_rgba_premultiplied(0, 0, 0, 60);
                                     }
                                     painter.circle_filled(center, radius * 0.2, color)
                                 } else {
@@ -98,13 +120,45 @@ impl eframe::App for ReversiApp {
                 }
 
                 if response.clicked() {
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let rel_pos = pos - offset;
-                        let col = (rel_pos.x / cell_size) as isize;
-                        let row = (rel_pos.y / cell_size) as isize;
+                    let can_human_move = if self.ai_mode {
+                        match self.ai_player {
+                            Some(ai) => self.game.current_player != ai,
+                            None => true,
+                        }
+                    } else {
+                        true
+                    };
+                    if can_human_move {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            let rel_pos = pos - offset;
+                            let col = (rel_pos.x / cell_size) as isize;
+                            let row = (rel_pos.y / cell_size) as isize;
 
-                        if row >= 0 && row < 8 && col >= 0 && col < 8 {
-                            self.game.make_move(row, col);
+                            if row >= 0 && row < 8 && col >= 0 && col < 8 {
+                                if self.game.make_move(row, col) {
+                                    play_sound("click_cell.mp3");
+                                }
+                            }
+                        }
+
+                    }
+                }
+                
+                // Play sound once when game ends
+                if self.game.state != GameState::Playing && !self.sound_played {
+                    match self.game.state {
+                        GameState::BlackWin | GameState::WhiteWin => play_sound("win.mp3"),
+                        GameState::Draw => play_sound("game_over.mp3"),
+                        _ => {}
+                    }
+                    self.sound_played = true;
+                }
+                
+                if self.ai_mode && self.game.state == GameState::Playing {
+                    if let Some(ai_player) = self.ai_player {
+                        if self.game.current_player == ai_player {
+
+                            ctx.request_repaint();
                         }
                     }
                 }
@@ -115,6 +169,7 @@ impl eframe::App for ReversiApp {
                     self.game.reset();
                     self.ai_mode = false;
                     self.ai_player = None;
+                    self.sound_played = false;
                 }
                 if ui.button("LET AI PLAY").clicked() {
                     self.ai_mode = true;
