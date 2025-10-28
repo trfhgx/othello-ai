@@ -9,6 +9,7 @@ pub enum Cell {
     Black,
     White,
 }
+#[derive(Clone)]
 
 pub struct Board {
     pub matrix: [[Cell; 8]; 8],

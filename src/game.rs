@@ -30,6 +30,7 @@ pub enum GameState {
     Draw,
 }
 
+#[derive(Clone)]
 pub struct Game {
     pub board: Board,
     pub current_player: Player,

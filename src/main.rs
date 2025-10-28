@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::BufReader;
 use board::Cell;
 use game::{Game, GameState, Player};
-
+use ai::minimax;
 fn play_sound(file: &str) {
     let path = format!("src/soundtrack/{}", file);
     std::thread::spawn(move || {
@@ -157,6 +157,11 @@ impl eframe::App for ReversiApp {
                 if self.ai_mode && self.game.state == GameState::Playing {
                     if let Some(ai_player) = self.ai_player {
                         if self.game.current_player == ai_player {
+                            let ( _score, best_move) = minimax(&self.game, ai_player.to_cell(), 0, 4);
+                            if let Some(cords) = best_move {
+                                self.game.make_move(cords.0, cords.1);
+                                play_sound("click_cell.mp3");
+                            }
 
                             ctx.request_repaint();
                         }
