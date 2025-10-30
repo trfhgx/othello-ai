@@ -20,7 +20,20 @@ pub fn eval(_game: &Game) -> isize {
 
     score += (_game.black_score as isize - _game.white_score as isize) * 10;
 
+    let corners = [
+        (0, 0),
+        (0, (_game.board.matrix.len() - 1) as isize),
+        ((_game.board.matrix.len() - 1) as isize, 0),
+        ((_game.board.matrix.len() - 1) as isize, (_game.board.matrix.len() - 1) as isize),
+    ];
 
+    for &(row, col) in &corners {
+        match _game.board.matrix[row as usize][col as usize] {
+            crate::board::Cell::Black => score += 100,
+            crate::board::Cell::White => score -= 100,
+            _ => {}
+        }
+    }
 
     score
 
@@ -31,6 +44,8 @@ pub fn minimax(_game: &Game, color: Cell, depth: usize, max_depth: usize, mut al
         return (eval(_game), None);
     }
 
+
+
     let moves = _game.board.all_valid_moves(color);
 
     if moves.is_empty() {
@@ -39,7 +54,8 @@ pub fn minimax(_game: &Game, color: Cell, depth: usize, max_depth: usize, mut al
 
     let mut best_score = if color == Cell::Black { isize::MIN } else { isize::MAX };
     let mut best_move = None;
-
+    let len = moves.len();
+    let mut node = 1;
     for index in moves {
         let mut new_game: Game = _game.clone();
         new_game.make_move(index.0, index.1);
@@ -51,7 +67,11 @@ pub fn minimax(_game: &Game, color: Cell, depth: usize, max_depth: usize, mut al
         };
 
         let (score, _) = minimax(&new_game, opposite_color, depth + 1, max_depth, alpha, beta);
+        if depth == 0 {
+            print!("{} ",  score);
+            node += 1;
 
+        }
         if color == Cell::Black {
             if score > best_score {
                 best_score = score;
@@ -72,6 +92,9 @@ pub fn minimax(_game: &Game, color: Cell, depth: usize, max_depth: usize, mut al
             }
         }
     }
+    if depth == 0 {
+        println!("\n Final score {} ", best_score);
 
+    }
     (best_score, best_move)
 }

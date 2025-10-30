@@ -46,6 +46,8 @@ struct ReversiApp {
     ai_player: Option<Player>,
     sound_played: bool,
     _audio_stream: Option<(OutputStream, rodio::OutputStreamHandle)>,
+    ai_vs_ai: bool,
+    depth: usize,
 }
 
 impl Default for ReversiApp {
@@ -56,16 +58,30 @@ impl Default for ReversiApp {
             ai_player: None,
             sound_played: false,
             _audio_stream: OutputStream::try_default().ok(),
+            ai_vs_ai: false,
+            depth: 5,
         }
     }
 }
 
 impl eframe::App for ReversiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle keyboard input for depth control
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::ArrowUp) {
+                self.depth = (self.depth + 1).min(10);
+            }
+            if i.key_pressed(egui::Key::ArrowDown) {
+                self.depth = self.depth.saturating_sub(1).max(1);
+            }
+        });
+        
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(30.0);
-                ui.heading("Reversito");
+                ui.add_space(20.0);
+                
+                ui.heading(egui::RichText::new("Reversito").size(32.0).strong());
+                ui.add_space(10.0);
 
                 let player_text = match self.game.current_player {
                     Player::Black => "Black's Turn",
@@ -79,10 +95,12 @@ impl eframe::App for ReversiApp {
                     GameState::Draw => "Draw!",
                 };
 
-                ui.label(format!("{}", state_text));
-                ui.label(format!("Black: {} | White: {}", self.game.black_score, self.game.white_score));
-
-                ui.add_space(30.0);
+                ui.label(egui::RichText::new(state_text).size(18.0));
+                ui.label(egui::RichText::new(format!("Black: {} | White: {}", self.game.black_score, self.game.white_score)).size(16.0));
+                if self.ai_mode {
+                    ui.label(egui::RichText::new(format!("AI Depth: {} (↑↓ to adjust)", self.depth)).size(14.0).color(Color32::GRAY));
+                }
+                ui.add_space(20.0);
 
                 let board_size = 700.0;
                 let cell_size = board_size / 8.0;
@@ -133,7 +151,7 @@ impl eframe::App for ReversiApp {
                     } else {
                         true
                     };
-                    if can_human_move {
+                    if can_human_move && !self.ai_vs_ai {
                         if let Some(pos) = response.interact_pointer_pos() {
                             let rel_pos = pos - offset;
                             let col = (rel_pos.x / cell_size) as isize;
@@ -179,30 +197,36 @@ impl eframe::App for ReversiApp {
                 }
                 
                 if self.ai_mode && self.game.state == GameState::Playing {
-                    if let Some(ai_player) = self.ai_player {
-                        if self.game.current_player == ai_player {
-                            let ( _score, best_move) = minimax(&self.game, ai_player.to_cell(), 0, 5, isize::MIN, isize::MAX);
-                            if let Some(cords) = best_move {
-                                self.game.make_move(cords.0, cords.1);
-                            }
-
-                            ctx.request_repaint();
+                    if self.ai_vs_ai || (self.ai_player.is_some() && self.game.current_player == self.ai_player.unwrap()) {
+                        let ( _score, best_move) = minimax(&self.game, self.game.current_player.to_cell(), 0, self.depth, isize::MIN, isize::MAX);
+                        if let Some(cords) = best_move {
+                            self.game.make_move(cords.0, cords.1);
+                            play_sound("click_cell.mp3");
                         }
+                        ctx.request_repaint();
                     }
                 }
 
                 ui.add_space(20.0);
 
-                if ui.button("New Game").clicked() {
-                    self.game.reset();
-                    self.ai_mode = false;
-                    self.ai_player = None;
-                    self.sound_played = false;
-                }
-                if ui.button("LET AI PLAY").clicked() {
-                    self.ai_mode = true;
-                    self.ai_player = Some(self.game.current_player);
-                }
+                ui.horizontal(|ui| {
+                    if ui.add_sized([150.0, 35.0], egui::Button::new(egui::RichText::new("New Game").size(16.0))).clicked() {
+                        self.game.reset();
+                        self.ai_mode = false;
+                        self.ai_player = None;
+                        self.sound_played = false;
+                        self.ai_vs_ai = false;
+                    }
+                    if ui.add_sized([150.0, 35.0], egui::Button::new(egui::RichText::new("AI vs Human").size(16.0))).clicked() {
+                        self.ai_mode = true;
+                        self.ai_player = Some(self.game.current_player);
+                        self.ai_vs_ai = false;
+                    }
+                    if ui.add_sized([150.0, 35.0], egui::Button::new(egui::RichText::new("AI vs AI").size(16.0))).clicked() {
+                        self.ai_mode = true;
+                        self.ai_vs_ai = true;
+                    }
+                });
             });
         });
     }
